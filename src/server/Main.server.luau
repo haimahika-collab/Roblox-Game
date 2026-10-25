@@ -39,7 +39,8 @@ local function label(target, text)
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromOffset(220, 60)
 	gui.StudsOffset = Vector3.new(0, 4, 0)
-	gui.MaxDistance = 65
+	gui.AlwaysOnTop = true
+	gui.MaxDistance = 400
 	gui.Parent = target
 	local title = Instance.new("TextLabel")
 	title.Size = UDim2.fromScale(1, 1)
@@ -56,8 +57,9 @@ local function prompt(target, action, description, callback)
 	local interaction = Instance.new("ProximityPrompt")
 	interaction.ActionText = action
 	interaction.ObjectText = description
-	interaction.HoldDuration = 0.6
-	interaction.MaxActivationDistance = 11
+	interaction.HoldDuration = 0
+	interaction.ClickablePrompt = true
+	interaction.MaxActivationDistance = 12
 	interaction.RequiresLineOfSight = false
 	interaction.Parent = target
 	interaction.Triggered:Connect(function(player)
@@ -94,20 +96,41 @@ spawn.Name = "VanSpawn"
 spawn.Size = Vector3.new(8, 1, 8)
 spawn.Position = Vector3.new(0, 1, 35)
 spawn.Transparency = 1
+spawn.CanCollide = false
 spawn.Anchored = true
 spawn.Neutral = true
 spawn.Parent = world
 
-local van = part("DeliveryVan", Vector3.new(12, 9, 20), Vector3.new(0, 5, 15), Color3.fromRGB(166, 136, 85))
-part("Windshield", Vector3.new(10, 3, 0.3), Vector3.new(0, 7, 4.8), Color3.fromRGB(35, 58, 70))
+-- Park off the player's straight route into the street, rather than blocking it.
+local van = part("DeliveryVan", Vector3.new(12, 9, 20), Vector3.new(-14, 5, 15), Color3.fromRGB(166, 136, 85))
+part("Windshield", Vector3.new(10, 3, 0.3), Vector3.new(-14, 7, 4.8), Color3.fromRGB(35, 58, 70))
 for _, x in ipairs({ -6, 6 }) do
 	for _, z in ipairs({ 9, 21 }) do
-		part("Wheel", Vector3.new(1, 4, 4), Vector3.new(x, 2, z), Color3.fromRGB(16, 16, 18))
+		part("Wheel", Vector3.new(1, 4, 4), Vector3.new(x - 14, 2, z), Color3.fromRGB(16, 16, 18))
 	end
 end
 label(van, "LAST DELIVERY • DISPATCH")
-local hatch = part("ParcelHatch", Vector3.new(6, 3, 0.5), Vector3.new(0, 4, 25.4), Color3.fromRGB(108, 84, 48))
-local exit = part("DriverDoor", Vector3.new(0.5, 5, 6), Vector3.new(-6.4, 5, 9), Color3.fromRGB(120, 96, 60))
+part("ParcelHatch", Vector3.new(6, 3, 0.5), Vector3.new(-14, 4, 25.4), Color3.fromRGB(108, 84, 48))
+local hatch = part("ParcelPickup", Vector3.new(3, 2, 2.5), Vector3.new(-10, 2, 31), Color3.fromRGB(189, 139, 76))
+label(hatch, "COLLECT PARCEL HERE\nPress E / tap prompt")
+local exit = part("DriverDoor", Vector3.new(0.5, 5, 6), Vector3.new(-20.4, 5, 9), Color3.fromRGB(120, 96, 60))
+
+local function numberPlate(target, number, face)
+	local surface = Instance.new("SurfaceGui")
+	surface.Name = "AddressPlate"
+	surface.Face = face
+	surface.CanvasSize = Vector2.new(300, 180)
+	surface.LightInfluence = 0
+	surface.Parent = target
+	local text = Instance.new("TextLabel")
+	text.Size = UDim2.fromScale(1, 1)
+	text.BackgroundColor3 = Color3.fromRGB(20, 25, 32)
+	text.TextColor3 = Color3.fromRGB(255, 226, 156)
+	text.Font = Enum.Font.GothamBold
+	text.TextScaled = true
+	text.Text = number
+	text.Parent = surface
+end
 
 local porches = {}
 for index, house in ipairs(Config.Houses) do
@@ -119,6 +142,14 @@ for index, house in ipairs(Config.Houses) do
 	local porch = part("Porch" .. house.Number, Vector3.new(12, 0.5, 12), p + Vector3.new(side * 22, 0.3, 0), Color3.fromRGB(91, 83, 75))
 	part("Walkway", Vector3.new(22, 0.2, 6), Vector3.new(side * -37, 0.2, p.Z), Color3.fromRGB(72, 72, 76))
 	label(door, "HOUSE " .. house.Number)
+	-- Large self-lit address plates on both sides of a roadside sign.
+	local signX = if p.X < 0 then -31 else 31
+	part("AddressPost" .. house.Number, Vector3.new(0.5, 5, 0.5), Vector3.new(signX, 2.5, p.Z + 9), Color3.fromRGB(95, 87, 73))
+	local sign = part("AddressSign" .. house.Number, Vector3.new(7, 4, 0.4), Vector3.new(signX, 5, p.Z + 9), Color3.fromRGB(25, 30, 38))
+	numberPlate(sign, house.Number, Enum.NormalId.Front)
+	numberPlate(sign, house.Number, Enum.NormalId.Back)
+	local plate = part("DoorNumber" .. house.Number, Vector3.new(0.3, 2, 3), p + Vector3.new(side * 16.8, 10.5, 0), Color3.fromRGB(25, 30, 38))
+	numberPlate(plate, house.Number, if side == 1 then Enum.NormalId.Right else Enum.NormalId.Left)
 	porches[index] = { Door = door, Porch = porch }
 end
 
@@ -164,6 +195,7 @@ local function broadcast()
 			House = house and house.Number or "", Rule = house and house.Rule or "",
 			Carrier = carrier and carrier.DisplayName or "", IsCarrier = carrier == player,
 			Result = result,
+			Target = if phase == "Escape" then "DriverDoor" elseif phase == "Delivery" then (if carrier then "Door" .. house.Number else "ParcelPickup") else "",
 		})
 	end
 end
@@ -198,7 +230,7 @@ local function anger(player, reason)
 	-- The monster approaches by road; it never teleports onto a player.
 end
 
-prompt(hatch, "Collect parcel", "Dispatch • one parcel at a time", function(player)
+local pickupPrompt = prompt(hatch, "Collect parcel", "PARCEL PICKUP • next to the van", function(player)
 	if phase ~= "Delivery" then send(player, "Complete your route, then use the driver door to escape."); return end
 	if carrier then send(player, carrier.DisplayName .. " already has the parcel."); return end
 	local character = player.Character
@@ -213,12 +245,26 @@ prompt(hatch, "Collect parcel", "Dispatch • one parcel at a time", function(pl
 	parcel.Massless = true
 	parcel.CFrame = root.CFrame * CFrame.new(0, -0.2, -2)
 	parcel.Parent = character
+	numberPlate(parcel, Config.Houses[route].Number, Enum.NormalId.Front)
 	local weld = Instance.new("WeldConstraint")
 	weld.Part0 = root
 	weld.Part1 = parcel
 	weld.Parent = parcel
 	send(player, "Parcel collected. Read the instruction before approaching the house.")
 	broadcast()
+end)
+
+-- Reflect the address on the pickup itself, even before a player collects it.
+task.spawn(function()
+	while world.Parent do
+		local house = Config.Houses[route]
+		pickupPrompt.Enabled = phase == "Delivery" and carrier == nil
+		if house then
+			pickupPrompt.ActionText = "Collect parcel " .. house.Number
+			pickupPrompt.ObjectText = "DELIVER TO HOUSE " .. house.Number
+		end
+		task.wait(0.2)
+	end
 end)
 
 for index, house in ipairs(Config.Houses) do
@@ -341,7 +387,7 @@ local function beginRound()
 	deadline = workspace:GetServerTimeNow() + Config.RoundSeconds
 	for _, player in ipairs(Players:GetPlayers()) do
 		local character = player.Character
-		if character then character:PivotTo(CFrame.new(0, 5, 35)) end
+		if character then character:PivotTo(CFrame.lookAt(Vector3.new(0, 5, 35), Vector3.new(0, 5, -70))) end
 	end
 	broadcast()
 end

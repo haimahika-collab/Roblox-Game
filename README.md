@@ -6,8 +6,8 @@ A Roblox cooperative horror prototype for 1–4 players. Deliver three parcels t
 
 1. Download/open `build/LastDelivery.rbxlx` in Roblox Studio (generated with the build command below).
 2. Press **Play**, not Run, to spawn a character and the HUD.
-3. At the van's rear hatch, collect the first parcel using the interaction prompt.
-4. Follow the HUD to houses **13 → 27 → 41**, returning to the van for each parcel.
+3. Follow the gold **COLLECT PARCEL 13** marker to the box beside the van. Press **E** once (or tap the prompt) to collect it.
+4. Follow the gold destination marker to houses **13 → 27 → 41**, returning to the pickup box for each parcel. Houses have large illuminated roadside numbers and number plates above the doors.
 5. After the third delivery, bring living teammates within 28 studs of the van and interact with the driver door on its left side.
 
 The environment is generated automatically when the server starts. No external models, audio assets, credentials, HTTP access, or DataStores are required. Use Studio's **Server & Clients** test mode with two clients to test cooperation. Set the published experience's maximum player count to **4** in Roblox's experience settings; the prototype also enforces a four-player server limit.
@@ -57,6 +57,7 @@ Connect the plugin to the displayed server address. Studio runs on your own Wind
 These require the Roblox engine and are not replaced by command-line checks:
 
 - Complete all three deliveries solo, then escape from the driver door. Verify the next round resets the route.
+- From spawn, walk straight down the center of the street without jumping; the van must not block you. Verify parcel pickup works with one E press/tap, the marker changes to house 13, and all three roadside address signs are readable from the road.
 - Attempt delivery without a parcel, at the wrong address, and at an already completed address. Only the correct carrier/address should advance the route.
 - Sprint to house 27 and attempt delivery immediately; retry after walking and waiting. At house 41, try with the light on, then off.
 - Let the follower approach and attack. Verify damage, death, respawn, parcel recovery, and safety by the van.

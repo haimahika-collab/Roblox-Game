@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ContextActionService = game:GetService("ContextActionService")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local remote = ReplicatedStorage:WaitForChild("LastDelivery"):WaitForChild("GameEvent")
 
@@ -47,7 +48,42 @@ local status = text(panel, 37, 24, 15)
 local objective = text(panel, 65, 42, 16)
 local rule = text(panel, 108, 48, 15, Color3.fromRGB(244, 201, 143))
 local controls = text(panel, 160, 38, 12, Color3.fromRGB(170, 180, 195))
-controls.Text = "F / Y: flashlight  •  Shift / L3: sprint\nUse prompts to collect, deliver and escape. Van = safe zone."
+controls.Text = "WASD: move • Space: jump • Hold right mouse: look\nE / tap: interact • F: light • Shift: sprint • Van = safe"
+
+-- This marker is local: every player sees their current shared objective.
+local marker = Instance.new("BillboardGui")
+marker.Name = "ObjectiveMarker"
+marker.Size = UDim2.fromOffset(240, 72)
+marker.StudsOffsetWorldSpace = Vector3.new(0, 7, 0)
+marker.AlwaysOnTop = true
+marker.MaxDistance = 500
+marker.Enabled = false
+marker.Parent = gui
+local markerText = Instance.new("TextLabel")
+markerText.Size = UDim2.fromScale(1, 1)
+markerText.BackgroundColor3 = Color3.fromRGB(15, 23, 30)
+markerText.BackgroundTransparency = 0.15
+markerText.TextColor3 = Color3.fromRGB(255, 220, 120)
+markerText.TextStrokeTransparency = 0.3
+markerText.Font = Enum.Font.GothamBold
+markerText.TextSize = 18
+markerText.Parent = marker
+local markerTarget = ""
+local markerCaption = ""
+local markerElapsed = 0
+RunService.Heartbeat:Connect(function(dt)
+	markerElapsed += dt
+	if markerElapsed < 0.15 then return end
+	markerElapsed = 0
+	local world = workspace:FindFirstChild("LastDeliveryWorld")
+	local target = world and world:FindFirstChild(markerTarget)
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	marker.Enabled = target ~= nil and root ~= nil and markerTarget ~= ""
+	marker.Adornee = target
+	if target and root then
+		markerText.Text = string.format("▼ %s\n%d studs away", markerCaption, math.floor((root.Position - target.Position).Magnitude))
+	end
+end)
 
 local notice = Instance.new("TextLabel")
 notice.AnchorPoint = Vector2.new(0.5, 1)
@@ -114,16 +150,18 @@ end
 
 remote.OnClientEvent:Connect(function(kind, payload)
 	if kind == "State" then
+		markerTarget = payload.Target or ""
+		markerCaption = if markerTarget == "ParcelPickup" then "COLLECT PARCEL " .. payload.House elseif markerTarget == "DriverDoor" then "ESCAPE • DRIVER DOOR" else "DELIVER • HOUSE " .. payload.House
 		local minutes = math.floor(payload.Remaining / 60)
 		local seconds = payload.Remaining % 60
 		status.Text = string.format("%d / %d delivered   •   %02d:%02d until dawn", payload.Delivered, payload.Total, minutes, seconds)
 		if payload.Phase == "Delivery" then
 			if payload.IsCarrier then
-				objective.Text = "Deliver your parcel to house " .. payload.House
+				objective.Text = "Parcel collected! Follow the marker to HOUSE " .. payload.House
 			elseif payload.Carrier ~= "" then
 				objective.Text = "Escort " .. payload.Carrier .. " to house " .. payload.House
 			else
-				objective.Text = "Collect the parcel for house " .. payload.House .. " from the van."
+				objective.Text = "Follow COLLECT PARCEL " .. payload.House .. " to the box beside the van. Press E or tap."
 			end
 			rule.Text = "DELIVERY NOTE: " .. payload.Rule
 		elseif payload.Phase == "Escape" then

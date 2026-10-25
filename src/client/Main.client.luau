@@ -123,7 +123,7 @@ end
 ContextActionService:BindAction("ReplayRadio", function(_, inputState)
 	if inputState == Enum.UserInputState.Begin and lastTransmission and not radioPlaying then playRadio(lastTransmission) end
 	return Enum.ContextActionResult.Sink
-end, false, Enum.KeyCode.R, Enum.KeyCode.ButtonDPadUp)
+end, false, Enum.KeyCode.R, Enum.KeyCode.DPadUp)
 
 local notice = Instance.new("TextLabel")
 notice.AnchorPoint = Vector2.new(0.5, 1)

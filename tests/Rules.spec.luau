@@ -1,0 +1,28 @@
+local Rules = require("../src/shared/Rules")
+local passed = 0
+local function check(name, actual, expected)
+	assert(actual == expected, name .. ": expected " .. tostring(expected) .. ", got " .. tostring(actual))
+	passed += 1
+end
+
+check("first parcel accepted", Rules.delivery(1, 1, true, "Bell", false, false, 0, 10), "Deliver")
+check("teammate cannot deliver someone else's parcel", Rules.delivery(1, 1, false, "Bell", false, false, 0, 10), "NoParcel")
+check("future house cannot skip route", Rules.delivery(3, 1, true, "Dark", false, false, 0, 10), "WrongAddress")
+check("repeat bell remains dangerous without a parcel", Rules.delivery(1, 2, false, "Bell", false, false, 0, 10), "RepeatedBell")
+check("quiet tenant rejects sprinting", Rules.delivery(2, 2, true, "Quiet", false, true, 0, 10), "Noise")
+check("quiet tenant remembers recent noise", Rules.delivery(2, 2, true, "Quiet", false, false, 11, 10), "Noise")
+check("noise expires at boundary", Rules.delivery(2, 2, true, "Quiet", false, false, 10, 10), "Deliver")
+check("dark tenant rejects light", Rules.delivery(3, 3, true, "Dark", true, false, 0, 10), "Light")
+check("dark tenant accepts light off", Rules.delivery(3, 3, true, "Dark", false, false, 0, 10), "Deliver")
+check("light rule cannot bypass parcel ownership", Rules.delivery(3, 3, false, "Dark", false, false, 0, 10), "NoParcel")
+check("ordinary detection", Rules.detectable(-50, 40, 85, false, false, false), true)
+check("distant quiet player hidden", Rules.detectable(-50, 100, 85, false, false, false), false)
+check("sprinting reveals distant player", Rules.detectable(-50, 100, 85, true, false, false), true)
+check("light reveals distant player", Rules.detectable(-50, 100, 85, false, true, false), true)
+check("anger ignores normal range", Rules.detectable(-50, 300, 85, false, false, true), true)
+check("safe zone overrides anger", Rules.detectable(0, 1, 85, true, true, true), false)
+check("safe zone boundary inclusive", Rules.detectable(-12, 1, 85, false, false, true), false)
+check("outside safe boundary vulnerable", Rules.detectable(-12.1, 1, 85, false, false, true), true)
+check("detection radius exclusive", Rules.detectable(-50, 85, 85, false, false, false), false)
+check("combined noise and light radius", Rules.detectable(-50, 160, 85, true, true, false), true)
+print(string.format("PASS: %d rule regression checks", passed))

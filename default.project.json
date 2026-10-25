@@ -1,0 +1,10 @@
+{
+  "name": "The Last Delivery",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": { "LastDelivery": { "$path": "src/shared" } },
+    "ServerScriptService": { "LastDelivery": { "$path": "src/server" } },
+    "StarterPlayer": { "StarterPlayerScripts": { "LastDelivery": { "$path": "src/client" } } },
+    "Workspace": { "$properties": { "FilteringEnabled": true } }
+  }
+}

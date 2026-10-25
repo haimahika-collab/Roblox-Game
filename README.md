@@ -4,6 +4,20 @@ A Roblox cooperative horror prototype for 1–4 players. Deliver three parcels t
 
 ## Play in Roblox Studio
 
+### New: unpredictable deliveries
+
+Each shift shuffles three tasks across the addresses. The HUD shows both the safety rule and the current task; the gold marker points to the correct interaction.
+
+- **Mailbox:** put the parcel in the roadside mailbox, rather than at the door.
+- **Signature:** interact at the door, wait three seconds for the tenant, then interact again to collect the signature.
+- **Photo proof:** place the parcel at the door, walk to the gold street marker, turn your character toward the door, and use **Take photo**. This is an in-game proof action, not a saved screenshot or camera upload.
+
+Approaching an address with its parcel triggers one random atmospheric encounter: a window silhouette, a three-second streetlight outage, or knocking-from-the-parcel captions. These events do not deal surprise damage. Encounters and temporary lights reset between shifts.
+
+The **dispatch radio** displays queued story captions from dispatch, tenants, and an unknown signal. Press **R** (controller D-pad Up) to replay the last transmission once the radio is idle. This version uses text transmissions, not recorded voice or knocking audio. The mission panel background is transparent.
+
+### Open the place
+
 1. Download/open `build/LastDelivery.rbxlx` in Roblox Studio (generated with the build command below).
 2. Press **Play**, not Run, to spawn a character and the HUD.
 3. Follow the gold **COLLECT PARCEL 13** marker to the box beside the van. Press **E** once (or tap the prompt) to collect it.
@@ -57,6 +71,8 @@ Connect the plugin to the displayed server address. Studio runs on your own Wind
 These require the Roblox engine and are not replaced by command-line checks:
 
 - Complete all three deliveries solo, then escape from the driver door. Verify the next round resets the route.
+- Verify every shift contains one mailbox, one signature, and one photo task. Confirm the marker and available prompt follow each task stage. Try collecting a signature too early and taking a photo while facing away; neither should finish the delivery.
+- Die or disconnect after placing a photo parcel and verify that dispatch offers it again with a fresh task. Verify encounter lights restore and silhouettes disappear after their timers, including across round resets. Check radio captions on both clients and replay using R.
 - From spawn, walk straight down the center of the street without jumping; the van must not block you. Verify parcel pickup works with one E press/tap, the marker changes to house 13, and all three roadside address signs are readable from the road.
 - Attempt delivery without a parcel, at the wrong address, and at an already completed address. Only the correct carrier/address should advance the route.
 - Sprint to house 27 and attempt delivery immediately; retry after walking and waiting. At house 41, try with the light on, then off.
@@ -68,4 +84,4 @@ These require the Roblox engine and are not replaced by command-line checks:
 
 ## Prototype scope
 
-This is an original asset-free blockout, with fixed house order and a simple follower constrained to the open street corridor. It does not yet include driving, procedural routes, sound design, saved progression, monetization, or a learning monster. Multiplayer replication, physics, visual balance, and engine behavior still need Studio playtesting before release.
+This is an original asset-free blockout, with fixed house order, shuffled delivery tasks, random atmospheric encounters, a caption-based dispatch radio, and a simple follower constrained to the open street corridor. It does not yet include driving, procedural routes, sound design, saved progression, monetization, or a learning monster. Multiplayer replication, physics, visual balance, and engine behavior still need Studio playtesting before release.

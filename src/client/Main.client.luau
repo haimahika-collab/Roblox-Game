@@ -14,13 +14,13 @@ gui.Parent = player:WaitForChild("PlayerGui")
 
 local panel = Instance.new("Frame")
 panel.Position = UDim2.new(0, 12, 0, 12)
-panel.Size = UDim2.new(0.92, 0, 0, 204)
+panel.Size = UDim2.new(0.92, 0, 0, 232)
 panel.BackgroundColor3 = Color3.fromRGB(12, 15, 22)
-panel.BackgroundTransparency = 0.12
+panel.BackgroundTransparency = 1
 panel.BorderSizePixel = 0
 panel.Parent = gui
 local constraint = Instance.new("UISizeConstraint")
-constraint.MaxSize = Vector2.new(510, 204)
+constraint.MaxSize = Vector2.new(510, 232)
 constraint.Parent = panel
 local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 8)
@@ -35,6 +35,7 @@ local function text(parent, y, height, size, color)
 	object.TextSize = size
 	object.TextColor3 = color or Color3.fromRGB(225, 225, 230)
 	object.TextWrapped = true
+	object.TextStrokeTransparency = 0.35
 	object.TextXAlignment = Enum.TextXAlignment.Left
 	object.TextYAlignment = Enum.TextYAlignment.Center
 	object.Parent = parent
@@ -46,8 +47,8 @@ title.Text = "THE LAST DELIVERY"
 title.Font = Enum.Font.GothamBold
 local status = text(panel, 37, 24, 15)
 local objective = text(panel, 65, 42, 16)
-local rule = text(panel, 108, 48, 15, Color3.fromRGB(244, 201, 143))
-local controls = text(panel, 160, 38, 12, Color3.fromRGB(170, 180, 195))
+local rule = text(panel, 108, 76, 14, Color3.fromRGB(244, 201, 143))
+local controls = text(panel, 188, 38, 12, Color3.fromRGB(170, 180, 195))
 controls.Text = "WASD: move • Space: jump • Hold right mouse: look\nE / tap: interact • F: light • Shift: sprint • Van = safe"
 
 -- This marker is local: every player sees their current shared objective.
@@ -84,6 +85,45 @@ RunService.Heartbeat:Connect(function(dt)
 		markerText.Text = string.format("▼ %s\n%d studs away", markerCaption, math.floor((root.Position - target.Position).Magnitude))
 	end
 end)
+
+local radioText = Instance.new("TextLabel")
+radioText.Name = "DispatchRadio"
+radioText.AnchorPoint = Vector2.new(0.5, 1)
+radioText.Position = UDim2.new(0.5, 0, 1, -22)
+radioText.Size = UDim2.new(0.75, 0, 0, 76)
+radioText.BackgroundColor3 = Color3.fromRGB(12, 24, 27)
+radioText.BackgroundTransparency = 0.2
+radioText.TextColor3 = Color3.fromRGB(164, 230, 207)
+radioText.Font = Enum.Font.GothamMedium
+radioText.TextSize = 15
+radioText.TextWrapped = true
+radioText.Visible = false
+radioText.Parent = gui
+local radioQueue = {}
+local lastTransmission = nil
+local radioPlaying = false
+local function playRadio(payload)
+	lastTransmission = payload
+	if #radioQueue >= 4 then table.remove(radioQueue, 1) end
+	table.insert(radioQueue, payload)
+	if radioPlaying then return end
+	radioPlaying = true
+	task.spawn(function()
+		while #radioQueue > 0 do
+			local transmission = table.remove(radioQueue, 1)
+			radioText.TextColor3 = if transmission.Speaker == "UNKNOWN SIGNAL" then Color3.fromRGB(255, 169, 151) else Color3.fromRGB(164, 230, 207)
+			radioText.Text = "[RADIO • " .. transmission.Speaker .. "]\n" .. transmission.Message
+			radioText.Visible = true
+			task.wait(8)
+		end
+		radioText.Visible = false
+		radioPlaying = false
+	end)
+end
+ContextActionService:BindAction("ReplayRadio", function(_, inputState)
+	if inputState == Enum.UserInputState.Begin and lastTransmission and not radioPlaying then playRadio(lastTransmission) end
+	return Enum.ContextActionResult.Sink
+end, false, Enum.KeyCode.R, Enum.KeyCode.ButtonDPadUp)
 
 local notice = Instance.new("TextLabel")
 notice.AnchorPoint = Vector2.new(0.5, 1)
@@ -151,7 +191,7 @@ end
 remote.OnClientEvent:Connect(function(kind, payload)
 	if kind == "State" then
 		markerTarget = payload.Target or ""
-		markerCaption = if markerTarget == "ParcelPickup" then "COLLECT PARCEL " .. payload.House elseif markerTarget == "DriverDoor" then "ESCAPE • DRIVER DOOR" else "DELIVER • HOUSE " .. payload.House
+		markerCaption = if markerTarget == "ParcelPickup" then "COLLECT PARCEL " .. payload.House elseif markerTarget == "DriverDoor" then "ESCAPE • DRIVER DOOR" elseif string.sub(markerTarget, 1, 7) == "Mailbox" then "MAILBOX • " .. payload.House elseif string.sub(markerTarget, 1, 5) == "Photo" then "PHOTO PROOF • " .. payload.House else "DOOR • HOUSE " .. payload.House
 		local minutes = math.floor(payload.Remaining / 60)
 		local seconds = payload.Remaining % 60
 		status.Text = string.format("%d / %d delivered   •   %02d:%02d until dawn", payload.Delivered, payload.Total, minutes, seconds)
@@ -163,7 +203,7 @@ remote.OnClientEvent:Connect(function(kind, payload)
 			else
 				objective.Text = "Follow COLLECT PARCEL " .. payload.House .. " to the box beside the van. Press E or tap."
 			end
-			rule.Text = "DELIVERY NOTE: " .. payload.Rule
+			rule.Text = "RULE: " .. payload.Rule .. "\nTASK: " .. (payload.Task or "Deliver at the door.")
 		elseif payload.Phase == "Escape" then
 			objective.Text = "Return to the van. Gather your crew and use the driver door!"
 			rule.Text = "Something is running behind you."
@@ -174,8 +214,18 @@ remote.OnClientEvent:Connect(function(kind, payload)
 		end
 	elseif kind == "Notice" then
 		showNotice(payload)
+	elseif kind == "Radio" then
+		playRadio(payload)
+	elseif kind == "Encounter" then
+		showNotice(payload)
+	elseif kind == "Photo" then
+		showNotice(payload)
+		overlay.BackgroundColor3 = Color3.new(1, 1, 1)
+		overlay.BackgroundTransparency = 0.65
+		TweenService:Create(overlay, TweenInfo.new(0.4), { BackgroundTransparency = 1 }):Play()
 	elseif kind == "Scare" then
 		showNotice(payload)
+		overlay.BackgroundColor3 = Color3.fromRGB(150, 10, 15)
 		overlay.BackgroundTransparency = 0.55
 		TweenService:Create(overlay, TweenInfo.new(0.8), { BackgroundTransparency = 1 }):Play()
 	end

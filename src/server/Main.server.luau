@@ -4,6 +4,7 @@ local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage.LastDelivery.Config)
 local Rules = require(ReplicatedStorage.LastDelivery.Rules)
+local Tasks = require(ReplicatedStorage.LastDelivery.DeliveryTasks)
 
 Players.RespawnTime = 5
 Lighting.ClockTime = 0
@@ -150,7 +151,16 @@ for index, house in ipairs(Config.Houses) do
 	numberPlate(sign, house.Number, Enum.NormalId.Back)
 	local plate = part("DoorNumber" .. house.Number, Vector3.new(0.3, 2, 3), p + Vector3.new(side * 16.8, 10.5, 0), Color3.fromRGB(25, 30, 38))
 	numberPlate(plate, house.Number, if side == 1 then Enum.NormalId.Right else Enum.NormalId.Left)
-	porches[index] = { Door = door, Porch = porch }
+	local mailbox = part("Mailbox" .. house.Number, Vector3.new(2, 1.5, 3), Vector3.new(signX, 3, p.Z - 8), Color3.fromRGB(117, 133, 144))
+	part("MailboxPost", Vector3.new(0.5, 3, 0.5), mailbox.Position - Vector3.new(0, 1.5, 0), Color3.fromRGB(62, 62, 66))
+	label(mailbox, "MAILBOX " .. house.Number)
+	local photo = part("Photo" .. house.Number, Vector3.new(4, 0.15, 4), Vector3.new(signX, 0.5, p.Z), Color3.fromRGB(184, 155, 72))
+	photo.CanCollide = false
+	local window = part("Window" .. house.Number, Vector3.new(0.4, 5, 6), p + Vector3.new(side * 16.5, 13, 9), Color3.fromRGB(38, 48, 60))
+	local watcher = part("Watcher" .. house.Number, Vector3.new(0.3, 4, 1.5), window.Position + Vector3.new(side * 0.3, 0, 0), Color3.fromRGB(3, 3, 5))
+	watcher.CanCollide = false
+	watcher.Transparency = 1
+	porches[index] = { Door = door, Porch = porch, Mailbox = mailbox, Photo = photo, Window = window, Watcher = watcher }
 end
 
 -- A readable silhouette that needs no uploaded models or paid assets.
@@ -181,6 +191,35 @@ local angerUntil = 0
 local state = {}
 local lastAttack = {}
 local monsterPosition = Vector3.new(0, 5, -300)
+local random = Random.new()
+local taskKinds = table.clone(Tasks.Names)
+local taskStage = "Start"
+local taskStarted = 0
+local placedParcel = nil
+local encounterSeen = {}
+local roundId = 0
+local lastRadio = nil
+
+local function radio(speaker, message)
+	lastRadio = { Speaker = speaker, Message = message }
+	remote:FireAllClients("Radio", lastRadio)
+end
+
+local function clearTask()
+	taskStage = "Start"
+	taskStarted = 0
+	if placedParcel then placedParcel:Destroy(); placedParcel = nil end
+end
+
+local function targetName(house)
+	if phase == "Escape" then return "DriverDoor" end
+	if phase ~= "Delivery" or not house then return "" end
+	if not carrier then return "ParcelPickup" end
+	local kind = taskKinds[route]
+	if kind == "Mailbox" then return "Mailbox" .. house.Number end
+	if kind == "Photo" and taskStage == "Photo" then return "Photo" .. house.Number end
+	return "Door" .. house.Number
+end
 
 local function send(player, message)
 	remote:FireClient(player, "Notice", message)
@@ -188,6 +227,17 @@ end
 
 local function broadcast()
 	local house = Config.Houses[route]
+	for index, porch in ipairs(porches) do
+		local actions = porch.Actions
+		if actions then
+			local active = phase == "Delivery" and index == route and carrier ~= nil
+			local kind = taskKinds[route]
+			actions.Mailbox.Enabled = active and kind == "Mailbox"
+			actions.Photo.Enabled = active and kind == "Photo" and taskStage == "Photo"
+			actions.Door.Enabled = phase == "Delivery" and (index < route or (active and (kind == "Signature" or (kind == "Photo" and taskStage == "Start"))))
+			actions.Door.ActionText = if index < route then "Ring again (unsafe)" elseif kind == "Signature" then (if taskStage == "Waiting" then "Collect signature" else "Request signature") else "Place parcel"
+		end
+	end
 	for _, player in ipairs(Players:GetPlayers()) do
 		remote:FireClient(player, "State", {
 			Phase = phase, Delivered = delivered, Total = #Config.Houses,
@@ -195,7 +245,8 @@ local function broadcast()
 			House = house and house.Number or "", Rule = house and house.Rule or "",
 			Carrier = carrier and carrier.DisplayName or "", IsCarrier = carrier == player,
 			Result = result,
-			Target = if phase == "Escape" then "DriverDoor" elseif phase == "Delivery" then (if carrier then "Door" .. house.Number else "ParcelPickup") else "",
+			Target = targetName(house),
+			Task = house and Tasks.instruction(taskKinds[route], taskStage) or "",
 		})
 	end
 end
@@ -211,6 +262,7 @@ local function dropParcel(player)
 	if carrier == player then
 		removeParcel(player)
 		carrier = nil
+		clearTask()
 		broadcast()
 	end
 end
@@ -220,6 +272,7 @@ local function finish(won)
 	result = if won then "ROUTE COMPLETE — You made it out. But who signed the last receipt?" else "SHIFT LOST — The neighborhood keeps its packages."
 	removeParcel(carrier)
 	carrier = nil
+	clearTask()
 	deadline = workspace:GetServerTimeNow() + Config.IntermissionSeconds
 	broadcast()
 end
@@ -268,12 +321,15 @@ task.spawn(function()
 end)
 
 for index, house in ipairs(Config.Houses) do
-	prompt(porches[index].Door, "Deliver / ring bell", "House " .. house.Number, function(player)
+	local function interact(player, action)
 		if phase ~= "Delivery" then return end
 		local data = state[player]
 		if not data then return end
 		local decision = Rules.delivery(index, route, carrier == player, house.Kind, data.Flashlight, data.Sprinting, data.NoisyUntil, workspace:GetServerTimeNow())
-		if decision == "RepeatedBell" then anger(player, "You rang twice. Something heard you."); return end
+		if decision == "RepeatedBell" then
+			if action == "Door" then anger(player, "You rang twice. Something heard you.") else send(player, "This address is already complete.") end
+			return
+		end
 		if decision == "WrongAddress" then send(player, "Wrong address. Follow the dispatch route."); return end
 		if decision == "NoParcel" then send(player, "Collect this house's parcel from the van first."); return end
 		if decision == "Light" then
@@ -284,19 +340,58 @@ for index, house in ipairs(Config.Houses) do
 			anger(player, "Too loud. Walk slowly and let the porch settle.")
 			return
 		end
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if not root then return end
+		local direction = porches[index].Door.Position - root.Position
+		local facing = direction.Magnitude > 0 and root.CFrame.LookVector:Dot(direction.Unit) > 0.4
+		local outcome = Tasks.interact(taskKinds[route], taskStage, action, workspace:GetServerTimeNow(), taskStarted, facing)
+		if outcome == "Wait" then
+			taskStage = "Waiting"
+			taskStarted = workspace:GetServerTimeNow()
+			radio("TENANT", "One moment. I need to find a pen. Stay by the door.")
+			broadcast()
+			return
+		elseif outcome == "Place" then
+			taskStage = "Photo"
+			removeParcel(player)
+			placedParcel = part("ProofParcel", Vector3.new(2, 1.5, 2), porches[index].Porch.Position + Vector3.new(0, 1, 0), Color3.fromRGB(170, 125, 72))
+			numberPlate(placedParcel, house.Number, Enum.NormalId.Front)
+			send(player, "Parcel placed. Go to the gold photo marker, face the door, then use Take photo.")
+			broadcast()
+			return
+		elseif outcome ~= "Complete" then
+			local messages = {
+				WrongTarget = "Check the task: " .. Tasks.instruction(taskKinds[route], taskStage),
+				Waiting = "The tenant is still finding a pen. Wait three seconds, then interact again.",
+				PlaceFirst = "Leave the parcel at the door before taking a photo.",
+				NeedPhoto = "The parcel is down. Take proof from the gold photo marker.",
+				FaceDoor = "Turn your CHARACTER toward the front door, then take the photo.",
+			}
+			send(player, messages[outcome] or "Follow the delivery task.")
+			return
+		end
+		if taskKinds[route] == "Photo" then remote:FireClient(player, "Photo", "Proof of delivery saved for this shift.") end
 		removeParcel(player)
 		carrier = nil
+		clearTask()
 		delivered += 1
 		route += 1
 		if delivered == #Config.Houses then
 			phase = "Escape"
 			angerUntil = workspace:GetServerTimeNow() + 999
 			send(player, "All packages delivered. EVERYONE back to the van!")
+			radio("UNKNOWN SIGNAL", "All deliveries received. There is one more passenger in your van.")
 		else
 			send(player, "Delivered. Return to dispatch for the next parcel.")
+			radio("DISPATCH", if delivered == 1 then "Receipt confirmed. If you see anyone in a window, keep moving." else "Last stop. Someone is using our frequency. Trust the written delivery notes.")
 		end
 		broadcast()
-	end)
+	end
+	porches[index].Actions = {
+		Door = prompt(porches[index].Door, "Deliver / collect signature", "House " .. house.Number, function(player) interact(player, "Door") end),
+		Mailbox = prompt(porches[index].Mailbox, "Deliver to mailbox", "Mailbox " .. house.Number, function(player) interact(player, "Mailbox") end),
+		Photo = prompt(porches[index].Photo, "Take photo", "Face the front door • proof of delivery", function(player) interact(player, "Photo") end),
+	}
 end
 
 prompt(exit, "Finish shift", "Driver door • gather your crew nearby", function(player)
@@ -321,6 +416,7 @@ remote.OnServerEvent:Connect(function(player, action, enabled)
 		if now - data.LastReady < 1 then return end
 		data.LastReady = now
 		broadcast()
+		if lastRadio then remote:FireClient(player, "Radio", lastRadio) end
 		return
 	end
 	if typeof(enabled) ~= "boolean" then return end
@@ -377,6 +473,22 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 local function beginRound()
+	roundId += 1
+	clearTask()
+	taskKinds = table.clone(Tasks.Names)
+	for i = #taskKinds, 2, -1 do
+		local j = random:NextInteger(1, i)
+		taskKinds[i], taskKinds[j] = taskKinds[j], taskKinds[i]
+	end
+	encounterSeen = {}
+	for _, porch in ipairs(porches) do
+		porch.Watcher.Transparency = 1
+		porch.Window.Color = Color3.fromRGB(38, 48, 60)
+		porch.Window.Material = Enum.Material.SmoothPlastic
+	end
+	for _, object in ipairs(world:GetDescendants()) do
+		if object:IsA("PointLight") then object.Brightness = 1.5 end
+	end
 	route = 1
 	delivered = 0
 	result = ""
@@ -390,6 +502,42 @@ local function beginRound()
 		if character then character:PivotTo(CFrame.lookAt(Vector3.new(0, 5, 35), Vector3.new(0, 5, -70))) end
 	end
 	broadcast()
+	radio("DISPATCH", "Night shift, check in. Three addresses. Read every note. Mailboxes, signatures and photo proof are on your manifest.")
+end
+
+local function encounter(index)
+	encounterSeen[index] = true
+	local generation = roundId
+	local porch = porches[index]
+	local kind = random:NextInteger(1, 3)
+	if kind == 1 then
+		porch.Window.Color = Color3.fromRGB(180, 170, 130)
+		porch.Window.Material = Enum.Material.Neon
+		porch.Watcher.Transparency = 0
+		remote:FireAllClients("Encounter", "A silhouette appears in the window. It is watching the parcel.")
+		task.delay(4, function()
+			if generation ~= roundId then return end
+			porch.Watcher.Transparency = 1
+			porch.Window.Material = Enum.Material.SmoothPlastic
+			porch.Window.Color = Color3.fromRGB(38, 48, 60)
+		end)
+	elseif kind == 2 then
+		remote:FireAllClients("Encounter", "The nearby streetlights go out. Keep moving; they will return.")
+		local lights = {}
+		for _, object in ipairs(world:GetDescendants()) do
+			if object:IsA("PointLight") and (object.Parent.Position - porch.Door.Position).Magnitude < 80 then
+				object.Brightness = 0
+				table.insert(lights, object)
+			end
+		end
+		task.delay(3, function()
+			if generation ~= roundId then return end
+			for _, light in ipairs(lights) do light.Brightness = 1.5 end
+		end)
+	else
+		radio("UNKNOWN SIGNAL", "Three knocks from inside your package. Do not open it. We know your name.")
+		remote:FireAllClients("Encounter", "KNOCK. KNOCK. KNOCK. Something moves inside the parcel.")
+	end
 end
 
 local accumulated = 0
@@ -403,6 +551,9 @@ RunService.Heartbeat:Connect(function(dt)
 			local root = character and character:FindFirstChild("HumanoidRootPart")
 			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 			if root and humanoid and humanoid.Health > 0 then
+				if phase == "Delivery" and player == carrier and not encounterSeen[route] and (root.Position - porches[route].Door.Position).Magnitude < 30 then
+					encounter(route)
+				end
 				local moving = humanoid.MoveDirection.Magnitude > 0.1
 				if data.Sprinting and moving then data.NoisyUntil = now + 3 end
 				-- The well-lit van is a safe zone; house interiors are sealed.

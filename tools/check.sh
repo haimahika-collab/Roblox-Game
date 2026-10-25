@@ -6,6 +6,7 @@ if [[ ! -x tools/bin/rojo || ! -x tools/bin/luau-compile || ! -x tools/bin/luau 
   exit 1
 fi
 tools/bin/luau tests/Rules.spec.luau
+tools/bin/luau tests/DeliveryTasks.spec.luau
 bytecode_file="$(mktemp)"
 trap 'rm -f "$bytecode_file"' EXIT
 while IFS= read -r -d '' source; do
